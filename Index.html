@@ -17,9 +17,34 @@
 <script>
 let T='',U=null,STAFF=[],VENUES=[],EVENTS=[];
 const $=id=>document.getElementById(id);
-function call(fn,args,ok){google.script.run.withSuccessHandler(ok||(()=>{})).withFailureHandler(e=>msg(e.message||e))[fn](...args)}
+function call(fn,args,ok){
+  if(!(window.google&&google.script&&google.script.run)){
+    showError('Google Apps Script connection is unavailable. Open the deployed /exec URL and refresh.');
+    return;
+  }
+  google.script.run
+    .withSuccessHandler(ok||(()=>{}))
+    .withFailureHandler(e=>showError((e&&e.message)?e.message:String(e||'Unknown server error')))
+    [fn](...args);
+}
+function showError(s){
+  const text='Error: '+s;
+  if($('login') && !$('login').classList.contains('hidden')){
+    $('loginmsg').textContent=text;
+    $('loginmsg').style.cssText='display:block;margin-top:12px;padding:10px;background:#fdeaea;color:#9b2525;border-radius:8px;font-size:12px;white-space:pre-wrap';
+  } else { msg(text); }
+}
 function msg(s){$('toast').textContent=s;$('toast').classList.remove('hidden')}
-function doLogin(){call('login',[$('username').value,$('password').value],r=>{T=r.token;U=r.user;init()})}
+function doLogin(){
+  $('loginmsg').textContent='Connecting…';
+  $('loginmsg').style.cssText='display:block;margin-top:12px;padding:10px;background:#e8f1f8;color:#214d70;border-radius:8px;font-size:12px';
+  const username=$('username').value.trim(), password=$('password').value;
+  if(!username||!password){showError('Please enter both username and password.');return;}
+  call('login',[username,password],r=>{
+    if(!r||!r.token||!r.user){showError('Login response is incomplete. Check Apps Script deployment.');return;}
+    T=r.token;U=r.user;$('loginmsg').textContent='Login successful. Loading dashboard…';init();
+  });
+}
 function init(){ $('login').classList.add('hidden');$('app').classList.remove('hidden');$('who').textContent=U.username;$('role').textContent=U.role;call('apiInit',[T],r=>{STAFF=r.staff;VENUES=r.venues;EVENTS=r.events;fill();dashboard(r.dashboard);loadStaff();loadRecords()})}
 function logout(){T='';U=null;$('app').classList.add('hidden');$('login').classList.remove('hidden')}
 function page(id,b){document.querySelectorAll('.screen').forEach(x=>x.classList.add('hidden'));$(id).classList.remove('hidden');document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));b.classList.add('active');if(id==='approval')loadApprovals();if(id==='records')loadRecords()}
@@ -44,8 +69,19 @@ function loadApprovals(){
 function actionTable(data,module){
   if(!data.length)return '<p class="muted">No pending records for your approval stage.</p>';
   const idKey=module==='ODC'?'ODC_ID':'REQUEST_ID';
-  return '<table><thead><tr><th>ID</th><th>Employee</th><th>Type / Event</th><th>Qty / Hours</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead><tbody>'+
-  data.map(x=>'<tr><td>'+esc(x[idKey])+'</td><td>'+esc(x.EMPLOYEE_NAME)+'</td><td>'+esc(module==='ODC'?(x.EVENT_NAME+' / '+x.VENUE_NAME):x.ADJUSTMENT_TYPE)+'</td><td>'+esc(module==='ODC'?x.DUTY_HOURS+' hrs':x.QUANTITY_DAYS+' days')+'</td><td>'+esc(module==='ODC'?'₹'+x.ODC_AMOUNT:'—')+'</td><td>'+esc(x.FINAL_STATUS)+'</td><td><button class="btn gold" onclick="approveItem(\\''+esc(x[idKey])+'\\',\\''+module+'\\',\\'APPROVE\\')">Approve</button> <button class="btn light" onclick="approveItem(\\''+esc(x[idKey])+'\\',\\''+module+'\\',\\'REJECT\\')">Reject</button></td></tr>').join('')+'</tbody></table>';
+  const rows=data.map(x=>{
+    const id=esc(x[idKey]);
+    const type=module==='ODC'?(String(x.EVENT_NAME||'')+' / '+String(x.VENUE_NAME||'')):String(x.ADJUSTMENT_TYPE||'');
+    const qty=module==='ODC'?(String(x.DUTY_HOURS||'')+' hrs'):(String(x.QUANTITY_DAYS||'')+' days');
+    const amount=module==='ODC'?('₹'+String(x.ODC_AMOUNT||0)):'—';
+    return `<tr>
+      <td>${id}</td><td>${esc(x.EMPLOYEE_NAME)}</td><td>${esc(type)}</td>
+      <td>${esc(qty)}</td><td>${esc(amount)}</td><td>${esc(x.FINAL_STATUS)}</td>
+      <td><button class="btn gold" onclick="approveItem('${id}','${module}','APPROVE')">Approve</button>
+      <button class="btn light" onclick="approveItem('${id}','${module}','REJECT')">Reject</button></td>
+    </tr>`;
+  }).join('');
+  return `<table><thead><tr><th>ID</th><th>Employee</th><th>Type / Event</th><th>Qty / Hours</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 function approveItem(id,module,decision){
   const remarks=prompt('Enter approval / rejection remarks (optional):')||'';
