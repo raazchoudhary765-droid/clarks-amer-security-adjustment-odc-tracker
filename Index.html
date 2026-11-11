@@ -15,6 +15,14 @@
 <section id="records" class="screen hidden"><div class="panel"><h3>Recent Requests & ODC Records</h3><div id="recordsTable" class="tablewrap"></div></div></section>
 <div id="toast" class="toast hidden"></div></main>
 <script>
+// Deployment and database references for this Clarks Amer installation.
+// Data operations run through google.script.run -> Code.gs -> SpreadsheetApp.openById().
+const APP_CONFIG = Object.freeze({
+  APP_EXEC_URL: 'https://script.google.com/macros/s/AKfycbwNLA3G4x_YKzFCtcsZwtBTFcWZowpVGwtboc592naZGLbNOCUXK4DuMwAfzFy96bmE_g/exec',
+  SPREADSHEET_ID: '1uKjzWSvU5qi-wHXa21mFcFIarhxtqwOGUCBb-EfBW4Y',
+  APPROVAL_EMAIL: 'raazchoudhary765@gmail.com',
+  ODC_RATE_PER_HOUR: 62.50
+});
 let T='',U=null,STAFF=[],VENUES=[],EVENTS=[];
 const $=id=>document.getElementById(id);
 function call(fn,args,ok){
