@@ -1,0 +1,9 @@
+# Local / editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.clasp.json
+node_modules/
+.env
+*.log
