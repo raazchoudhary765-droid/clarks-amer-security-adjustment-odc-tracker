@@ -68,6 +68,7 @@
 <button class="btn" onclick="page('staff',this)">Employee Profile</button>
 <button class="btn" onclick="page('adj',this)">CO / Weekly Off</button>
 <button class="btn" onclick="page('odc',this)">ODC Cash Pay</button>
+<button class="btn" onclick="page('leave',this)">Leave Management</button>
 <button class="btn" onclick="page('approval',this)">Approvals</button>
 <button class="btn" onclick="page('reports',this)">Reports</button>
 <button class="btn" onclick="page('records',this)">Records</button>
@@ -115,7 +116,7 @@
  </div>
  <div id="staffCards" class="balance-grid"></div>
 </div></section>
-<section id="adj" class="screen hidden"><div class="panel"><h3>New CO / Weekly Off Request</h3><div class="grid"><div><label>Employee</label><select id="a_emp"></select></div><div><label>Type</label><select id="a_type"><option value="COMPENSATORY_OFF">Compensatory Off</option><option value="WEEKLY_OFF">Weekly Off</option></select></div><div><label>Transaction</label><select id="a_trans"><option>EARNED</option><option>AVAILED</option></select></div><div><label>Quantity (e.g. 0.5 day, 1 day or 4 hours)</label><input id="a_qty" type="text" value="1" placeholder="0.5 / 1 / 1.5 / 4 hours"><small class="muted">0.5 day = 4 hours · Free-text quantity accepted</small></div><div><label>Duty Date</label><input id="a_duty" type="date"></div><div><label>Adjustment Date</label><input id="a_date" type="date"></div></div><label>Reason</label><input id="a_reason"><label>Remarks</label><textarea id="a_remarks"></textarea><button class="btn gold" onclick="submitAdj()">Submit – CSO + HR Approval Required</button></div></section>
+<section id="adj" class="screen hidden"><div class="panel"><h3>New CO / Weekly Off Request</h3><div class="grid"><div><label>Employee</label><select id="a_emp"></select></div><div><label>Type</label><select id="a_type"><option value="COMPENSATORY_OFF">Compensatory Off</option><option value="WEEKLY_OFF">Weekly Off</option></select></div><div><label>Transaction</label><select id="a_trans"><option>EARNED</option><option>AVAILED</option></select></div><div><label>Quantity (e.g. 0.5 day, 1 day or 4 hours)</label><input id="a_qty" type="text" value="1" placeholder="0.5 / 1 / 1.5 / 4 hours"><small class="muted">0.5 day = 4 hours · Free-text quantity accepted</small></div><div><label>Duty Date</label><input id="a_duty" type="date"><label style="margin-top:8px">Duty Time</label><input id="a_duty_time" type="time"></div><div><label>Adjustment Date</label><input id="a_date" type="date"><label style="margin-top:8px">Adjustment Time</label><input id="a_adj_time" type="time"></div></div><label>Reason</label><input id="a_reason"><label>Remarks</label><textarea id="a_remarks"></textarea><button class="btn gold" onclick="submitAdj()">Submit – CSO + HR Approval Required</button></div></section>
 <section id="odc" class="screen hidden">
 <div class="panel"><div class="section-heading"><div><h3 style="margin:0">ODC Cash Pay Entry</h3><div class="muted">Capture all fields required for the standard ODC register</div></div><span class="status-chip status-approved">₹62.50 / Hour</span></div>
 <div class="grid" style="margin-top:12px">
@@ -132,6 +133,20 @@
 <label>Remarks</label><textarea id="o_remarks"></textarea>
 <button class="btn gold" onclick="submitOdc()">Submit ODC – CSO + HR Approval Required</button>
 </div></section>
+<section id="leave" class="screen hidden">
+ <div class="panel">
+  <div class="section-head"><div><h3>New Leave Request</h3><p class="muted">Leave approval is sent directly to HR by secure email link.</p></div></div>
+  <div class="grid">
+   <div><label>Employee Name</label><select id="l_emp" onchange="syncLeaveStaffType()"></select></div>
+   <div><label>Staff Type</label><select id="l_staff_type"><option>Onroll</option><option>Casual</option></select></div>
+   <div><label>Leave From Date</label><input id="l_from" type="date"></div>
+   <div><label>Leave Till Date</label><input id="l_till" type="date"></div>
+  </div>
+  <label>Leave Reason</label><textarea id="l_reason" placeholder="Enter reason for leave"></textarea>
+  <button class="btn gold" onclick="submitLeave()">Submit Leave – HR Approval Required</button>
+ </div>
+ <div class="panel"><div class="section-heading"><h3>Leave Requests</h3><button class="btn light" onclick="loadLeaveRecords()">Refresh</button></div><div id="leaveRecords" class="tablewrap"></div></div>
+</section>
 <section id="approval" class="screen hidden">
  <div class="panel">
   <div class="section-heading"><div><h3 style="margin:0">Approval Register</h3><div class="muted">One approval mailbox: raazchoudhary765@gmail.com</div></div>
@@ -235,13 +250,15 @@ function page(id,b){
   if(id==='records')loadRecords();
   if(id==='balances')refreshAll();
   if(id==='staff')loadStaff();
+  if(id==='leave')loadLeaveRecords();
 }
 function pageById(id,filter){
   page(id);
   if(id==='approval'&&filter)setApprovalFilter(filter.toUpperCase());
 }
 function fill(){
-  [['a_emp',STAFF],['o_emp',STAFF]].forEach(([id,a])=>$(id).innerHTML=a.map(x=>`<option value="${esc(x.EMPLOYEE_ID)}">${esc(x.EMPLOYEE_NAME)} (${esc(x.EMPLOYEE_ID)})</option>`).join(''));
+  [['a_emp',STAFF],['o_emp',STAFF],['l_emp',STAFF]].forEach(([id,a])=>$(id).innerHTML=a.map(x=>`<option value="${esc(x.EMPLOYEE_ID)}">${esc(x.EMPLOYEE_NAME)} (${esc(x.EMPLOYEE_ID)})</option>`).join(''));
+  syncLeaveStaffType();
   $('o_event').innerHTML=EVENTS.map(x=>`<option>${esc(x.EVENT_NAME)}</option>`).join('');
   $('o_venue').innerHTML=VENUES.map(x=>`<option>${esc(x.VENUE_NAME)}</option>`).join('');
 }
@@ -263,9 +280,9 @@ function renderBalanceCards(target,employees){
     <div class="employee-tile-top"><img src="${photoOrPlaceholder(x.photo)}" alt="Employee photo">
      <div style="min-width:0"><div class="emp-name">${esc(x.name)}</div><div class="emp-sub">${esc(x.designation)} · ${esc(x.employeeId)}</div></div></div>
     <div class="balance-numbers">
-     <div><b>${Number(x.adjustmentHours).toLocaleString('en-IN')}</b><span>Adjustment Hrs</span></div>
-     <div><b>${Number(x.odcHours).toLocaleString('en-IN')}</b><span>ODC Hrs</span></div>
-     <div><b>${Number(x.totalHours).toLocaleString('en-IN')}</b><span>Total Hrs</span></div>
+     <div><b>${Number(x.adjustmentHours).toLocaleString('en-IN')}</b><span>Adjustment Hrs · ${x.adjustmentDays||0} Day ${x.adjustmentHalfDays||0} Half</span></div>
+     <div><b>${Number(x.odcHours).toLocaleString('en-IN')}</b><span>ODC Hrs · ${x.odcDays||0} Day ${x.odcHalfDays||0} Half</span></div>
+     <div><b>${Number(x.totalHours).toLocaleString('en-IN')}</b><span>Total Hrs · ${x.totalDays||0} Day ${x.totalHalfDays||0} Half</span></div>
     </div>
     <div class="employee-actions"><button class="btn btn-xs gold" onclick="event.stopPropagation();openEmployeeDetails('${esc(x.employeeId)}')">Full Details</button><button class="btn btn-xs light" onclick="event.stopPropagation();chooseReplacementPhoto('${esc(x.employeeId)}')">Add / Replace Photo</button></div>
    </div>`).join('')||'<p class="muted">No active employees found.</p>';
@@ -283,7 +300,7 @@ function openEmployeeDetails(employeeId){
     $('employeeModalHead').innerHTML=`<div class="modal-profile"><img src="${photoOrPlaceholder(p.photo)}"><div><h2 style="margin:0;color:#173d5a">${esc(p.name)}</h2><div class="muted">${esc(p.designation)} · ${esc(p.employeeId)}</div><div class="muted">${esc(p.employmentType)} · ${esc(p.department)}</div></div></div>`;
     const rows=r.transactions.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.type)}</td><td>${esc(x.hours)} hrs</td><td>${esc(x.event||'—')}</td><td>${esc(x.venue||x.post||'—')}</td><td>${esc(x.dutyFrom||'—')} - ${esc(x.dutyTo||'—')}</td><td>${esc(x.odcFrom||'—')} - ${esc(x.odcTo||'—')}</td><td>${esc(x.status)}</td><td>${esc(x.remarks)}</td></tr>`).join('');
     $('employeeModalBody').innerHTML=`
-      <div class="modal-kpis"><div><b>${b.adjustmentHours||0}</b><span>Adjustment Hours</span></div><div><b>${b.odcHours||0}</b><span>ODC Hours</span></div><div><b>${b.totalHours||0}</b><span>Total Balance Hours</span></div></div>
+      <div class="modal-kpis"><div><b>${b.adjustmentHours||0}</b><span>Adjustment Hours · ${b.adjustmentDays||0} Day ${b.adjustmentHalfDays||0} Half</span></div><div><b>${b.odcHours||0}</b><span>ODC Hours · ${b.odcDays||0} Day ${b.odcHalfDays||0} Half</span></div><div><b>${b.totalHours||0}</b><span>Total Balance · ${b.totalDays||0} Day ${b.totalHalfDays||0} Half</span></div></div>
       <div class="section-heading"><h3>Date-wise History</h3><button class="btn gold btn-xs" onclick="chooseReplacementPhoto('${esc(p.employeeId)}')">Add / Replace Employee Photo</button></div>
       <div class="tablewrap"><table><thead><tr><th>Date</th><th>Type</th><th>Hours</th><th>Event</th><th>Venue / Post</th><th>Duty Time</th><th>ODC Time</th><th>Status</th><th>Remarks</th></tr></thead><tbody>${rows||'<tr><td colspan="9">No detail records found.</td></tr>'}</tbody></table></div>`;
     $('employeeModal').classList.add('open');
@@ -311,8 +328,21 @@ function submitEmployee(){
 }
 function table(a,cols,photos){if(!a.length)return '<p class="muted">No records found.</p>';return '<table><thead><tr>'+cols.map(c=>`<th>${c}</th>`).join('')+'</tr></thead><tbody>'+a.map(r=>'<tr>'+cols.map(c=>`<td>${c==='EMPLOYEE_NAME'&&photos?`<span class="staff">${r.PROFILE_PHOTO_URL?`<img class="photo" src="${esc(r.PROFILE_PHOTO_URL)}">`:''}${esc(r[c])}</span>`:esc(r[c])}</td>`).join('')+'</tr>').join('')+'</tbody></table>'}
 function submitAdj(){
- const d={EMPLOYEE_ID:$('a_emp').value,ADJUSTMENT_TYPE:$('a_type').value,TRANSACTION_TYPE:$('a_trans').value,QUANTITY_TEXT:$('a_qty').value,DUTY_DATE:$('a_duty').value,ADJUSTMENT_DATE:$('a_date').value,REASON:$('a_reason').value,REMARKS:$('a_remarks').value};
+ const d={EMPLOYEE_ID:$('a_emp').value,ADJUSTMENT_TYPE:$('a_type').value,TRANSACTION_TYPE:$('a_trans').value,QUANTITY_TEXT:$('a_qty').value,DUTY_DATE:$('a_duty').value,DUTY_TIME:$('a_duty_time').value,ADJUSTMENT_DATE:$('a_date').value,ADJUSTMENT_TIME:$('a_adj_time').value,REASON:$('a_reason').value,REMARKS:$('a_remarks').value};
  call('apiPublicSubmitAdjustment',[d],r=>{msg('Request submitted: '+r.id+' | CSO + HR approval required.');loadRecords();refreshAll();});
+}
+function syncLeaveStaffType(){
+ const emp=STAFF.find(x=>String(x.EMPLOYEE_ID)===$('l_emp').value);
+ if(emp)$('l_staff_type').value=String(emp.EMPLOYMENT_TYPE||'Onrole').toLowerCase()==='casual'?'Casual':'Onroll';
+}
+function submitLeave(){
+ const d={EMPLOYEE_ID:$('l_emp').value,STAFF_TYPE:$('l_staff_type').value,LEAVE_FROM_DATE:$('l_from').value,LEAVE_TILL_DATE:$('l_till').value,LEAVE_REASON:$('l_reason').value};
+ if(!d.EMPLOYEE_ID||!d.LEAVE_FROM_DATE||!d.LEAVE_TILL_DATE){msg('Please select employee and both leave dates.');return;}
+ if(new Date(d.LEAVE_TILL_DATE)<new Date(d.LEAVE_FROM_DATE)){msg('Leave Till Date cannot be earlier than Leave From Date.');return;}
+ call('apiPublicSubmitLeave',[d],r=>{msg('Leave request '+r.id+' submitted for HR approval. Total leave days: '+r.days);$('l_reason').value='';loadLeaveRecords();refreshAll();});
+}
+function loadLeaveRecords(){
+ call('apiPublicList',['LEAVE'],rows=>{$('leaveRecords').innerHTML=table(rows,['LEAVE_ID','EMPLOYEE_NAME','STAFF_TYPE','LEAVE_FROM_DATE','LEAVE_TILL_DATE','LEAVE_DAYS','LEAVE_REASON','HR_STATUS','FINAL_STATUS']);});
 }
 function calcOdc(){const h=Number($('o_hours').value||0);$('o_amount').value='₹'+(h*62.5).toFixed(2)}
 function submitOdc(){
